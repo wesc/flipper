@@ -1,0 +1,1893 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Flipper, a Federated Twitter Clone &mdash; Elements of Web Architecture v0.1 documentation</title>
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '',
+        VERSION:     '0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Elements of Web Architecture v0.1 documentation" href="index.html" />
+    <link rel="prev" title="Elements of Web Architecture" href="index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="index.html" title="Elements of Web Architecture"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Elements of Web Architecture v0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="flipper-a-federated-twitter-clone">
+<h1>Flipper, a Federated Twitter Clone<a class="headerlink" href="#flipper-a-federated-twitter-clone" title="Permalink to this headline">¶</a></h1>
+<p>Over the next few lessons, we&#8217;ll construct a custom web framework and
+Twitter clone called Flipper. Flipper will be a minimal Twitter
+implementation, but also feature some interesting cross site
+communication features. This series of lessons assumes working
+knowledge of Python, as well as a familiarity with Linux and the
+command line. That said, because of Python&#8217;s portability, all of this
+work could be done on a non-Unix platform.</p>
+<div class="section" id="wsgi">
+<h2>WSGI<a class="headerlink" href="#wsgi" title="Permalink to this headline">¶</a></h2>
+<p>The Web Service Gateway Interface (WSGI, pronounced wiz-ghee) is an
+interface specification first defined by <a class="reference external" href="http://www.python.org/dev/peps/pep-0333/">PEP 333</a>, and then later refined
+in <a class="reference external" href="http://www.python.org/dev/peps/pep-3333/">PEP 3333</a> (read this,
+but do not get bogged down in the details). Its purpose is to clarify
+the boundary between a web server such as Apache, and the web
+application, which contains all of the logic required to take input
+from users and return pages to browsers. WSGI is the starting point of
+the custom framework you will be develping for this project.</p>
+<p>Ben Bangert wrote a quick introduction to WSGI <a class="footnote-reference" href="#id2" id="id1">[1]</a> and middleware which is
+a good starting point:</p>
+<blockquote>
+<div><a class="reference external" href="http://be.groovie.org/post/296349572/wsgi-and-wsgi-middleware-is-easy">http://be.groovie.org/post/296349572/wsgi-and-wsgi-middleware-is-easy</a></div></blockquote>
+<p>Ben does not mention how to run simple_app from his example. You do
+this like so:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">wsgiref.simple_server</span> <span class="kn">import</span> <span class="n">make_server</span>
+<span class="n">httpd</span> <span class="o">=</span> <span class="n">make_server</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="mi">8000</span><span class="p">,</span> <span class="n">simple_app</span><span class="p">)</span>
+<span class="n">httpd</span><span class="o">.</span><span class="n">serve_forever</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Set up simple_app and verify that you can get to it with
+your browser. You should be able to access the page at
+<tt class="docutils literal"><span class="pre">localhost:8000</span></tt> or your machine&#8217;s full name.</p>
+</div>
+<p>Constructing an application of any sort of complexity from basic WSGI
+would be sisyphean effort. One of the particularly baroque aspects of
+WSGI is the <tt class="docutils literal"><span class="pre">environ</span></tt> variable and <tt class="docutils literal"><span class="pre">start_response</span></tt> mechanism. A
+common method of cleaning up the design is to use response and request
+objects instead. You might prefer to write <tt class="docutils literal"><span class="pre">simple_app</span></tt> like so:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">simple_app</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Simplest possible application object&quot;&quot;&quot;</span>
+
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">Response</span><span class="p">()</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s">&#39;200 OK&#39;</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;Content-type&#39;</span><span class="p">,</span><span class="s">&#39;text/plain&#39;</span><span class="p">)]</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="s">&#39;Hello world!</span><span class="se">\n</span><span class="s">&#39;</span>
+
+    <span class="k">return</span> <span class="n">resp</span>
+</pre></div>
+</div>
+<p>Here, the structure is much more natural: receive a request, processes
+it, and return a response. There are several competing implementations
+of this design, both within larger frameworks such as <a class="reference external" href="http://www.djangoproject.com">Django</a>, and as standalone modules, such as
+<a class="reference external" href="http://pythonpaste.org/webob/">WebOb</a> and <a class="reference external" href="http://werkzeug.pocoo.org/">Werkzeug</a>. We will be using WebOb.</p>
+<p>We will now take the standard WSGI function signature and transform it
+into something that is WebOb friendly. Recall <tt class="docutils literal"><span class="pre">simple_app</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">simple_app</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Simplest possible application object&quot;&quot;&quot;</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="s">&#39;200 OK&#39;</span>
+    <span class="n">response_headers</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;Content-type&#39;</span><span class="p">,</span><span class="s">&#39;text/plain&#39;</span><span class="p">)]</span>
+    <span class="n">start_response</span><span class="p">(</span><span class="n">status</span><span class="p">,</span> <span class="n">response_headers</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[</span><span class="s">&#39;Hello world!</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>We would prefer to use Request/Response objects, so this is one
+possible transformation:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">simple_app</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Simplest possible application object&quot;&quot;&quot;</span>
+
+    <span class="n">request</span> <span class="o">=</span> <span class="n">webob</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span><span class="n">environ</span><span class="p">)</span>
+
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">webob</span><span class="o">.</span><span class="n">Response</span><span class="p">()</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s">&#39;200 OK&#39;</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;Content-type&#39;</span><span class="p">,</span><span class="s">&#39;text/plain&#39;</span><span class="p">)]</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="s">&#39;Hello world!</span><span class="se">\n</span><span class="s">&#39;</span>
+
+    <span class="k">return</span> <span class="n">resp</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Every WSGI app we write will require a similar transformation. We can
+eliminate a little busy work by constructing a decorator:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">wsgify</span><span class="p">(</span><span class="n">webob_app</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Take a WebOb friendly app and transform it into a WSGI app.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">wsgi_app</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">):</span>
+        <span class="n">request</span> <span class="o">=</span> <span class="n">webob</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span><span class="n">environ</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">webob_app</span><span class="p">(</span><span class="n">request</span><span class="p">)(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">wsgi_app</span>
+</pre></div>
+</div>
+<p>And now:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@wsgify</span>
+<span class="k">def</span> <span class="nf">simple_app</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Simplest possible application object&quot;&quot;&quot;</span>
+
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">Response</span><span class="p">()</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s">&#39;200 OK&#39;</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;Content-type&#39;</span><span class="p">,</span><span class="s">&#39;text/plain&#39;</span><span class="p">)]</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="s">&#39;Hello world!</span><span class="se">\n</span><span class="s">&#39;</span>
+
+    <span class="k">return</span> <span class="n">resp</span>
+</pre></div>
+</div>
+<p>WebOb conveniently provides that decorator function, and their form
+does a little bit extra in the way of exception handling:
+<a class="reference external" href="http://pythonpaste.org/webob/modules/dec.html">http://pythonpaste.org/webob/modules/dec.html</a></p>
+<p>Finally, middleware typically accepts a single app as input and
+returns a single app as output. A logical extension of this is a
+composition that takes several apps as input and a single app as
+output, so you could perversely write:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">do_you_feel_lucky_punk</span><span class="p">(</span><span class="n">wsgi_app1</span><span class="p">,</span> <span class="n">wsgi_app2</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">wsgi_app1</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">wsgi_app2</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">wsgi</span>
+</pre></div>
+</div>
+<p>We will see a more rational use case when considering URL routing.</p>
+<hr class="docutils" />
+<p>Let&#8217;s take a step back for a moment. WSGI provides essentially two
+mechanisms:</p>
+<dl class="docutils">
+<dt>Transformation</dt>
+<dd>A method for taking input and producing output, called an app.</dd>
+<dt>Composition</dt>
+<dd>A method for taking one or more apps and transforming it into
+another app.</dd>
+</dl>
+<p>These are powerful abstractions, and similar structures can be found
+in stream processing applications. One example might be video editing
+software:</p>
+<dl class="docutils">
+<dt>Transformation 1</dt>
+<dd>Take a clip and apply color correction to it.</dd>
+<dt>Transformation 2</dt>
+<dd>Take a clip and boost the sound.</dd>
+<dt>Composition</dt>
+<dd>Take 1 and 2 (a set of transformations), and produce a new
+transformation that runs input through 1 and then 2.</dd>
+</dl>
+<p>Another might be the Unix command line:</p>
+<dl class="docutils">
+<dt>Transformation</dt>
+<dd><tt class="docutils literal"><span class="pre">cat</span> <span class="pre">words.txt</span> <span class="pre">|</span> <span class="pre">sort</span></tt></dd>
+<dt>Composition</dt>
+<dd><tt class="docutils literal"><span class="pre">nice</span> <span class="pre">sort</span></tt></dd>
+</dl>
+<table class="docutils footnote" frame="void" id="id2" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>Additional tutorials and information can be found at <a class="reference external" href="http://wsgi.org/wsgi/Learn_WSGI">wsgi.org</a>, though they are largely
+redundant in scope.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="structure-of-the-url-and-routing">
+<h2>Structure of the URL and routing<a class="headerlink" href="#structure-of-the-url-and-routing" title="Permalink to this headline">¶</a></h2>
+<p>The backbone of a web request is its URL:
+<a class="reference external" href="http://en.wikipedia.org/wiki/Url">http://en.wikipedia.org/wiki/Url</a>.</p>
+<p>Consider the following URL:</p>
+<div class="highlight-python"><pre>http://digg.com/news/technology/media/recent</pre>
+</div>
+<p>The key piece of information here is the
+<tt class="docutils literal"><span class="pre">/news/technology/media/recent</span></tt> path, which indicates which page to
+serve. Other components of interest are query variables:</p>
+<div class="highlight-python"><pre>http://www.google.com/?q=S7+Labs</pre>
+</div>
+<p>In this example, the URL contains a single query variable, &#8220;q&#8221;, with
+value &#8220;S7 Labs&#8221;. URLs are not allowed to have spaces nor various other
+characters, so arbitrary strings require encoding into a URL friendly
+form. Python comes with libraries for doing this:
+<a class="reference external" href="http://docs.python.org/library/urllib.html">http://docs.python.org/library/urllib.html</a>. Generally, the process of
+transforming arbitrary text into a form that fits in a restricted
+character set is called quoting, escaping, or encoding.</p>
+<p>Path and query variables roughly map to functions and arguments. For
+example, you might have a function:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">get_recent_tech_news</span><span class="p">(</span><span class="n">num</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+   <span class="sd">&quot;&quot;&quot;Return the last NUM news items, 10 by default.&quot;&quot;&quot;</span>
+
+   <span class="o">...</span>
+</pre></div>
+</div>
+<p>In URL land, we might have:</p>
+<div class="highlight-python"><pre>/news/technology/recent (returns 10 by default)
+/news/technology/recent?num=20</pre>
+</div>
+<p>The URL path is analogous to a function, and query variables are
+analogous to function arguments. This rule generally produces
+reasonable mappings, though there are some notable exceptions:</p>
+<blockquote>
+<div><ul class="simple">
+<li>If you require the URL to be user (or search engine) friendly,
+then you may want to insert parameters into the path. For example,
+<tt class="docutils literal"><span class="pre">/user?username=john</span></tt>, though it may correspond to a function
+<tt class="docutils literal"><span class="pre">get_user(username='john')</span></tt>, is likely too complicated for
+general users who may want to be able to get directly to John&#8217;s
+page by directly typing in the URL. <tt class="docutils literal"><span class="pre">/user/john</span></tt> is much
+cleaner. It&#8217;s also ambiguous whether or not search engines fully
+weight query parameters when indexing pages. Crawlers must pay
+attention to them at some level; the question is if the <tt class="docutils literal"><span class="pre">john</span></tt>
+keyword gets more weight for the page with <tt class="docutils literal"><span class="pre">/user/john</span></tt> or
+<tt class="docutils literal"><span class="pre">?username=john</span></tt>.</li>
+<li>In some cases, you may want to infer the direct object of an
+action from user hidden information, such as logged in state. For
+instance, a <tt class="docutils literal"><span class="pre">/dashboard</span></tt> route may always display an editing
+interface for the currently logged in user, and thus need not be
+specified in the URL. These kinds of paths are generally private,
+in the sense that you must be logged in, and search engines are
+not allowed to have access.</li>
+</ul>
+</div></blockquote>
+<p>URLs should be considered permanent. Moving them wrecks havoc on
+search engines and bookmarked links. A related problem is inserting
+mechnical details into the URL, such as <tt class="docutils literal"><span class="pre">cgi-bin</span></tt> in paths, or
+appending <tt class="docutils literal"><span class="pre">.html</span></tt> to the URL. Should any particular detail change,
+the URL would either have to move, or become a lie. Tim Berners-Lee
+has a classic essay on the topic, <a class="reference external" href="http://www.w3.org/Provider/Style/URI.html">Cool URIs Don&#8217;t Change</a>, which links to Jakob
+Nielsen&#8217;s <a class="reference external" href="http://www.useit.com/alertbox/990321.html">own take</a>.</p>
+<p>The mechanism for getting from a request with path <tt class="docutils literal"><span class="pre">/foo/bar?q=qux</span></tt>
+to the web app <tt class="docutils literal"><span class="pre">foo_bar</span></tt> is called routing or dispatching. You will
+now build a simple routing mechanism using Python regexes:
+<a class="reference external" href="http://docs.python.org/library/re.html">http://docs.python.org/library/re.html</a>.</p>
+<p>When designing a system, you should try to anticipate the input
+size. As a reference, the Songza application currently contains around
+120 routes. A large site might have roughly a few hundred routes, or
+even a few thousand at most, but would be unlikely to have millions of
+routes. The relatively small number implies that linearly searching a
+list of routes is likely a reasonable strategy.</p>
+<p>For Flipper, we would like to define routes like so:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">login_app</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="o">...</span>
+
+<span class="k">def</span> <span class="nf">logout_app</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="o">...</span>
+
+<span class="k">def</span> <span class="nf">user_app</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+    <span class="o">...</span>
+
+<span class="k">def</span> <span class="nf">about_app</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="o">...</span>
+
+<span class="k">def</span> <span class="nf">index_app</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="o">...</span>
+
+
+<span class="n">routes</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;/login&#39;</span><span class="p">,</span> <span class="n">login_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/logout&#39;</span><span class="p">,</span> <span class="n">logout_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/user/(?P&lt;username&gt;\w+)&#39;</span><span class="p">,</span> <span class="n">user_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/about&#39;</span><span class="p">,</span> <span class="n">about_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="n">index_app</span><span class="p">)]</span>
+
+<span class="c"># main wsgi app</span>
+<span class="n">flipper_app</span> <span class="o">=</span> <span class="n">RouterApp</span><span class="p">(</span><span class="n">routes</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The algorithm is roughly:</p>
+<div class="highlight-python"><pre>def route_algorithm(request, routes):
+    for r, app in routes:
+        if request.path matches r:
+            args = extract from request.path and r
+            return app(request, args)
+
+    raise Page Not Found</pre>
+</div>
+<p>Notes:</p>
+<ol class="arabic">
+<li><p class="first">Matching should be done in the order in which it&#8217;s defined, ie if a
+path matches two different route rules, the first one should be the
+one that gets executed.</p>
+</li>
+<li><p class="first">There is an implied <tt class="docutils literal"><span class="pre">^</span></tt> and <tt class="docutils literal"><span class="pre">$</span></tt> at the beginning and end of the
+route spec. Thus, the <tt class="docutils literal"><span class="pre">/foo</span></tt> spec matches the path <tt class="docutils literal"><span class="pre">/foo</span></tt>, and
+not <tt class="docutils literal"><span class="pre">/foobar</span></tt> nor <tt class="docutils literal"><span class="pre">/barfoo</span></tt>.</p>
+</li>
+<li><p class="first">The input apps to <tt class="docutils literal"><span class="pre">RouterApp</span></tt> should take a request object and
+any matched portions of the regex. To simplify things, the app
+should return a rendered string, and use <tt class="docutils literal"><span class="pre">webob.exc.*</span></tt> to signal
+HTTP errors, such as &#8220;404 Not Found&#8221;. For example:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">user_app</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">flipper</span><span class="o">.</span><span class="n">get_user</span><span class="p">(</span><span class="n">username</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">user</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&quot;hello, &quot;</span> <span class="o">+</span> <span class="n">username</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">webob</span><span class="o">.</span><span class="n">exc</span><span class="o">.</span><span class="n">HTTPNotFound</span><span class="p">()</span>
+</pre></div>
+</div>
+</li>
+<li><p class="first"><tt class="docutils literal"><span class="pre">RouterApp</span></tt> should raise or pass through WebOb exceptions for
+standard HTTP errors. You should write middleware that catches 404
+exceptions and renders a user friendly error page (but be careful
+not to rewrite the HTTP error code!).</p>
+</li>
+<li><p class="first">You do not have to write real <tt class="docutils literal"><span class="pre">*_app</span></tt> functions. You can merely
+use stub functions, like:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">login_app</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="s">&#39;login app!&#39;</span>
+</pre></div>
+</div>
+</li>
+</ol>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Write <tt class="docutils literal"><span class="pre">RouterApp</span></tt>.</p>
+</div>
+</div>
+<div class="section" id="templating">
+<h2>Templating<a class="headerlink" href="#templating" title="Permalink to this headline">¶</a></h2>
+<p>Web pages are almost entirely text, thus you&#8217;ll find your apps will
+generally be returning strings in the response body. Let&#8217;s look at
+<tt class="docutils literal"><span class="pre">user_app</span></tt> again:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@wsgify</span>
+<span class="k">def</span> <span class="nf">user_app</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">webob</span><span class="o">.</span><span class="n">Response</span><span class="p">()</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="s">&#39;hello, &#39;</span> <span class="o">+</span> <span class="n">username</span>
+    <span class="k">return</span> <span class="n">resp</span>
+</pre></div>
+</div>
+<p>The return here is actually malformed, since it is not valid HTML. A
+full HTML page for the user <tt class="docutils literal"><span class="pre">wes</span></tt> might look like this:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="cp">&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.01 Transitional//EN&quot;</span>
+<span class="cp">                      &quot;http://www.w3.org/TR/html4/loose.dtd&quot;&gt;</span>
+<span class="nt">&lt;html&gt;</span>
+  <span class="nt">&lt;head&gt;</span>
+    <span class="nt">&lt;title&gt;</span>wes<span class="nt">&lt;/title&gt;</span>
+  <span class="nt">&lt;/head&gt;</span>
+
+  <span class="nt">&lt;body&gt;</span>
+    <span class="nt">&lt;h1&gt;</span>wes<span class="nt">&lt;/h1&gt;</span>
+
+    <span class="nt">&lt;p&gt;</span>Hello, wes!<span class="nt">&lt;/p&gt;</span>
+  <span class="nt">&lt;/body&gt;</span>
+<span class="nt">&lt;/html&gt;</span>
+</pre></div>
+</div>
+<p>Producing lengthy HTML output from within Python is problematic
+because:</p>
+<ol class="arabic simple">
+<li>Python&#8217;s syntax makes it awkward to produce long strings.</li>
+<li>Python has rudimentary variable substitution facilities for
+inserting data into strings.</li>
+<li>In a large scale web app, non-programmers (designers) often times
+write the HTML, and so requiring them to touch Python code is an
+iffy proposition.</li>
+</ol>
+<p>To fix these problems, web frameworks use template languages. With a
+template language, a designer writes HTML, but uses special template
+variables to insert data into the page. For example:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="nt">&lt;html&gt;</span>
+  <span class="nt">&lt;head&gt;</span>
+    <span class="nt">&lt;title&gt;</span>{{ user.username }}<span class="nt">&lt;/title&gt;</span>
+  <span class="nt">&lt;/head&gt;</span>
+
+  <span class="nt">&lt;body&gt;</span>
+    <span class="nt">&lt;h1&gt;</span>{{ user.username }}<span class="nt">&lt;/h1&gt;</span>
+
+    <span class="nt">&lt;p&gt;</span>Hello, {{ user.username }}!<span class="nt">&lt;/p&gt;</span>
+  <span class="nt">&lt;/body&gt;</span>
+<span class="nt">&lt;/html&gt;</span>
+</pre></div>
+</div>
+<p>The framework is usually structured so that the designer can simply
+drop in HTML files, and interface to the rest of the web app flows
+through the template variables. The designer then views the template
+variables as an API, and the developer views them as the end WSGI
+app. For instance, the designer writes the above HTML into
+<tt class="docutils literal"><span class="pre">user.html</span></tt>, and the developer writes the following:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">user_app</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">flipper</span><span class="o">.</span><span class="n">get_user</span><span class="p">(</span><span class="n">username</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">user</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">flipper</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="s">&#39;user.html&#39;</span><span class="p">,</span> <span class="p">{</span> <span class="s">&#39;user&#39;</span><span class="p">:</span> <span class="n">user</span> <span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">webob</span><span class="o">.</span><span class="n">exc</span><span class="o">.</span><span class="n">HTTPNotFound</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>For Flipper, we will be using <a class="reference external" href="http://jinja.pocoo.org/">Jinja2 templates</a>. The documentation is extensive. You
+should first read it from the <a class="reference external" href="http://jinja.pocoo.org/docs/templates/">designer&#8217;s point of view</a>, and then familiarize
+yourself with <a class="reference external" href="http://jinja.pocoo.org/docs/api/">how the programmatic side works</a>.</p>
+<p>Consider the render function described in <tt class="docutils literal"><span class="pre">user_app</span></tt>. It should take
+two arguments, a template filename, and a context dictionary, and:</p>
+<ol class="arabic simple">
+<li>Create a Jinja2 template object for the given filename. You should
+pick a reasonable location for all of the templates in the
+framework. Generally this is a &#8216;templates&#8217; directory within the
+project.</li>
+<li>Return the rendered template using the given context dictionary as
+arguments. The return type should be a string.</li>
+<li>Pay careful attention to error conditions. If there are rendering
+errors, or the template file is not found, you want to return a 50x
+server error.</li>
+</ol>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Write <tt class="docutils literal"><span class="pre">flipper.render</span></tt>.</p>
+</div>
+</div>
+<div class="section" id="html">
+<h2>HTML<a class="headerlink" href="#html" title="Permalink to this headline">¶</a></h2>
+<p><a class="reference external" href="http://en.wikipedia.org/wiki/HTML">HTML</a> is a textual
+representation of data that can be rendered by a browser into a visual
+form for a user. It consists of a series of tags, which are usually
+found in open and close pairs. An open tag is text separated by <tt class="docutils literal"><span class="pre">&lt;</span></tt>
+and <tt class="docutils literal"><span class="pre">&gt;</span></tt>, and the matching closing tag is the same, except that the
+text is prepended by a <tt class="docutils literal"><span class="pre">/</span></tt>. For example, an HTML document consists
+of header and body sections, enclosed in <tt class="docutils literal"><span class="pre">head</span></tt> and <tt class="docutils literal"><span class="pre">body</span></tt> tags,
+which are themselves inclosed in <tt class="docutils literal"><span class="pre">html</span></tt> tags:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="nt">&lt;html&gt;</span>
+
+  <span class="nt">&lt;head&gt;</span>
+  <span class="nt">&lt;/head&gt;</span>
+
+  <span class="nt">&lt;body&gt;</span>
+  <span class="nt">&lt;/body&gt;</span>
+
+<span class="nt">&lt;/html&gt;</span>
+</pre></div>
+</div>
+<p>HTML <em>markup</em> languages in general provide a structure to describe
+content while considering presentation a separated concern. A document
+may specify the relative importance of content elements, but not
+dictate exactly how that importance should be visually rendered:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="c">&lt;!-- comment tags --&gt;</span>
+
+<span class="nt">&lt;h1&gt;</span>Elements of Web Architecture<span class="nt">&lt;/h1&gt;</span> <span class="c">&lt;!-- heading 1, the most important heading --&gt;</span>
+
+<span class="nt">&lt;h2&gt;</span>Flipper, a Federated Twitter Clone<span class="nt">&lt;/h2&gt;</span>
+
+<span class="nt">&lt;p&gt;</span> <span class="c">&lt;!-- paragraph tag --&gt;</span>
+  Over the next few lessons, we&#39;ll construct a custom web
+  framework and Twitter clone called Flipper.
+<span class="nt">&lt;/p&gt;</span>
+
+<span class="nt">&lt;h3&gt;</span>WSGI<span class="nt">&lt;/h3&gt;</span>
+
+<span class="nt">&lt;p&gt;</span>
+  The Web Service Gateway Interface (WSGI, pronounced wiz-ghee)
+  is an interface specification first defined by
+
+  <span class="c">&lt;!-- anchor tag: specifies a hypertext link (note that</span>
+<span class="c">       whitespace is unimportant) --&gt;</span>
+  <span class="nt">&lt;a</span> <span class="na">href=</span><span class="s">&quot;http://www.python.org/dev/peps/pep-0333/&quot;</span><span class="nt">&gt;</span>PEP 333<span class="nt">&lt;/a&gt;</span>.
+<span class="nt">&lt;/p&gt;</span>
+</pre></div>
+</div>
+<p>Some elements, such as <tt class="docutils literal"><span class="pre">img</span></tt>, do not require a closing tag. In this case, the tag itself ends in <tt class="docutils literal"><span class="pre">/&gt;</span></tt>:</p>
+<div class="highlight-python"><pre>&lt;img src="/hello.jpg" /&gt;</pre>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last"><a class="reference external" href="http://www.w3schools.com/html/">w3schools</a> appears to
+have won the Google site listing wars for HTML tutorials and
+references. You should read the introduction and get familiar with
+the basic HTML tags.</p>
+</div>
+<p>There is a notion of &#8220;semantic&#8221; markup, which is at times
+misunderstood. Semantic markup generally means that information you
+present in an HTML file uses tags in appropriate ways. For example,
+you may use <tt class="docutils literal"><span class="pre">h1</span></tt> tags for the titles of chapters, or <tt class="docutils literal"><span class="pre">ul</span></tt> tags for
+lists of items. There is nothing that prevents you from constructing a
+list using a series of <tt class="docutils literal"><span class="pre">p</span></tt> elements, however doing so might put you
+at the wrath of the search engine optimization gods. Search engines
+presumably understand relative tag importance (<tt class="docutils literal"><span class="pre">h1</span></tt> tags are more
+important than <tt class="docutils literal"><span class="pre">h2</span></tt> tags, tags deep in a nested hierarchy are less
+important than inclosing tags, etc).</p>
+<p>Some uses of the term &#8220;semantic&#8221; imply a complete decoupling of
+content and presentation. Old style HTML allowed for indicating text
+as being bold by using <tt class="docutils literal"><span class="pre">b</span></tt> tags. New &#8220;semantic&#8221; HTML says that you
+should indicate text as <em>important</em> by using <tt class="docutils literal"><span class="pre">em</span></tt> (emphasis) tags,
+but defer the decision on <em>how to indicate importance</em> to some other
+mechanism (CSS, or Cascading Style Sheets, in this case).</p>
+<p>It is not possible for content and presentation to be completely
+separated. Two paragraphs, for example, may only make sense if one is
+presented before the other, and so there is always at least a linear
+presentation ordering on content that can be implied from the way the
+markup is written.</p>
+<p>Once you realize that the division between content an presentation is
+fungible, you open yourself to the possibility of building
+presentational tricks and tools into markup. <a class="reference external" href="http://www.blueprintcss.org">Blueprint CSS</a> and <a class="reference external" href="http://960.gs">960 Grid</a> are two
+examples of very popular presentation frameworks that do exactly that.</p>
+<p>The content / presentation relationship is further muddied by the
+insight that one layer&#8217;s content might be another layer&#8217;s
+presentation. Take, for example, the notion of a user with information
+stored inside of a database. An administrator may want to view the
+user&#8217;s information via a web page or via a text interface produced by
+an internal tool. The content, in this example, is the database record
+for the user, and the presentation is the HTML or text output. When
+considering a content / presentation abstraction, you also need to
+consider what layer of the system you&#8217;re talking about.</p>
+</div>
+<div class="section" id="sql">
+<h2>SQL<a class="headerlink" href="#sql" title="Permalink to this headline">¶</a></h2>
+<p>Structured Query Language (SQL, pronounced ess-queue-el, or sometimes
+sequel), is a language for pulling information out of a relational
+database.</p>
+<p>You can think of relational databases as a series of tables with fixed
+columns, and SQL is the way that one table ties in with another.</p>
+<p>For example, the Flipper database might have a user table:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="24%" />
+<col width="24%" />
+<col width="52%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">username</th>
+<th class="head">password</th>
+<th class="head">registration_date</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>wes</td>
+<td>wes123</td>
+<td>2011-06-06</td>
+</tr>
+<tr><td>roy</td>
+<td>roy222</td>
+<td>2011-06-08</td>
+</tr>
+<tr><td>chris</td>
+<td>chris192</td>
+<td>2011-06-10</td>
+</tr>
+<tr><td>joe</td>
+<td>joejoe</td>
+<td>2011-07-04</td>
+</tr>
+</tbody>
+</table>
+<p>And a table of flips:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="6%" />
+<col width="16%" />
+<col width="37%" />
+<col width="41%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">id</th>
+<th class="head">username</th>
+<th class="head">time</th>
+<th class="head">flip</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>1</td>
+<td>wes</td>
+<td>2011-06-06 12:32:25</td>
+<td>hello world!</td>
+</tr>
+<tr><td>2</td>
+<td>wes</td>
+<td>2011-06-06 12:35:21</td>
+<td>could be fun</td>
+</tr>
+<tr><td>3</td>
+<td>roy</td>
+<td>2011-06-08 09:12:47</td>
+<td>ahoy, matey</td>
+</tr>
+<tr><td>4</td>
+<td>chris</td>
+<td>2011-06-10 23:32:11</td>
+<td>&#64;wes I agree</td>
+</tr>
+<tr><td>5</td>
+<td>chris</td>
+<td>2011-06-10 23:33:42</td>
+<td>#sasquatch I see him!</td>
+</tr>
+</tbody>
+</table>
+<p>Using SQL, you can retrieve information from tables:</p>
+<div class="highlight-python"><pre>&gt; select * from users;
+wes|wes123|2011-06-06
+roy|roy222|2011-06-08
+chris|chris192|2011-06-10
+joe|joejoe|2011-07-04</pre>
+</div>
+<p>And you can tie data together using the <tt class="docutils literal"><span class="pre">join</span></tt> operator:</p>
+<div class="highlight-python"><pre>; all flips for user wes
+&gt; select flip from flips where username = 'wes';
+hello world!
+could be fun
+
+; all flips for users who signed up before 2011-06-09
+&gt; select flip from flips join users on
+         flips.username = users.username where users.registration_date &lt; '2011-06-09';
+hello world!
+could be fun
+ahoy, matey</pre>
+</div>
+<p>Flipper will use <a class="reference external" href="http://www.sqlite.org/">SQLite 3</a>, which is small
+SQL implementation that requires minimal administrative work. It is
+ideal for development, as the data resides in a file that can be
+copied and easily removed. In contrast, an SQL server such as MySQL
+typically requires root access, and has much more in the way of
+authentication, remote connectivity, replication, tools, and other
+useful features. <a class="footnote-reference" href="#id5" id="id4">[2]</a></p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You should run through the tutorial exercise at <a class="reference external" href="http://sqlzoo.net/3.htm">SQLzoo</a>, and familiarize yourself with <a class="reference external" href="http://www.sqlite.org/docs.html">SQLite</a>. You should also look at
+Python&#8217;s <a class="reference external" href="http://docs.python.org/library/sqlite3.html">sqlite3 module</a> and note the
+questionmark param style.</p>
+</div>
+<p>If you have used a web framework, you might be familiar with Object
+Relational Mappers. An ORM is a library that translates SQL queries to
+and from a language&#8217;s object model. It vastly simplifies development,
+and generally cuts down on the need to understand SQL. We&#8217;re purposely
+using SQLite directly for Flipper so that you might better understand
+the nuts and bolts.</p>
+<table class="docutils footnote" frame="void" id="id5" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id4">[2]</a></td><td><a class="reference external" href="http://www.sqlite.org/whentouse.html">http://www.sqlite.org/whentouse.html</a></td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="the-flipper-model">
+<h2>The Flipper Model<a class="headerlink" href="#the-flipper-model" title="Permalink to this headline">¶</a></h2>
+<p>Now comes the fun part! We&#8217;ll build an internal API for managing users
+and flips. First, we&#8217;ll need to initialize the database with
+tables. We&#8217;ll start with a basic structure:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">time</span>
+
+<span class="kn">import</span> <span class="nn">sqlite3</span>
+
+
+<span class="k">class</span> <span class="nc">FlipperModel</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">db_filename</span><span class="o">=</span><span class="s">&#39;:memory:&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conn</span> <span class="o">=</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">db_filename</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">init_tables</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates tables in database. Can only be called once per</span>
+<span class="sd">        database. Returns True on success, False for all error</span>
+<span class="sd">        conditions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s">&quot;CREATE TABLE users (&quot;</span>
+                                  <span class="s">&quot;username TEXT PRIMARY KEY, &quot;</span>
+                                  <span class="s">&quot;registration_time INTEGER, &quot;</span> <span class="c"># seconds since epoch</span>
+                                  <span class="s">&quot;password TEXT&quot;</span>
+                                  <span class="s">&quot;)&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">except</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">Error</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">create_user</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Takes a username and a password and creates this user in the</span>
+<span class="sd">        database. Return True on success, False on all error</span>
+<span class="sd">        conditions, including attempts to create a user tha already</span>
+<span class="sd">        exists.</span>
+
+<span class="sd">        &gt;&gt;&gt; fm = FlipperModel()</span>
+<span class="sd">        &gt;&gt;&gt; fm.init_tables()</span>
+<span class="sd">        True</span>
+<span class="sd">        &gt;&gt;&gt; fm.create_user(&#39;wes&#39;, &#39;wespass&#39;)</span>
+<span class="sd">        True</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s">&quot;INSERT INTO users (username, password, registration_time) &quot;</span>
+                                  <span class="s">&quot;VALUES (?, ?, ?)&quot;</span><span class="p">,</span>
+                                  <span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()))</span>
+                <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">except</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">Error</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">get_user</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Looks up the user by username.</span>
+
+<span class="sd">        &gt;&gt;&gt; fm = FlipperModel()</span>
+<span class="sd">        &gt;&gt;&gt; fm.init_tables()</span>
+<span class="sd">        True</span>
+<span class="sd">        &gt;&gt;&gt; fm.create_user(&#39;wes&#39;, &#39;wespass&#39;)</span>
+<span class="sd">        True</span>
+<span class="sd">        &gt;&gt;&gt; fm.get_user(&#39;wes&#39;)[&#39;password&#39;] == &#39;wespass&#39;</span>
+<span class="sd">        True</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fetchone</span><span class="p">(</span><span class="s">&quot;SELECT * FROM users WHERE username = ?&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="p">))</span>
+        <span class="k">except</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">Error</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">_fetchone</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sel</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">[]):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper function that selects a single row using the given</span>
+<span class="sd">        select statement and parameters, and constructs a dictionary</span>
+<span class="sd">        of column names to values. Returns None if no entry</span>
+<span class="sd">        found. Passes through any db exceptions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="p">:</span>
+            <span class="n">cur</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">sel</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+            <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">description</span><span class="p">]</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">row</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">columns</span><span class="p">,</span> <span class="n">row</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">_fetchall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sel</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">[]):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper function that selects all rows using the given select</span>
+<span class="sd">        statement and parameters, and constructs a list of</span>
+<span class="sd">        dictionaries of column names to values. Returns empty list if</span>
+<span class="sd">        no entry found. Passes through any db exceptions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="p">:</span>
+            <span class="n">cur</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">sel</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+            <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">description</span><span class="p">]</span>
+            <span class="k">return</span> <span class="p">[</span><span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">columns</span><span class="p">,</span> <span class="n">row</span><span class="p">))</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()]</span>
+</pre></div>
+</div>
+<p>We are storing times as seconds since the epoch, ie <a class="reference external" href="http://en.wikipedia.org/wiki/Unix_time">Unix time</a>. The main advantage to
+doing this is that it eliminates timezone ambiguities; the timezone of
+the server, the value stored in the database, and the value assumed by
+the application must all match up for correctness. The disadvantage is
+that you&#8217;ll then have to convert from an integer into a language&#8217;s
+native time object wherever you need more specific time information.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>Study the structure of <tt class="docutils literal"><span class="pre">FlipperModel</span></tt>, and make sure you
+understand <tt class="docutils literal"><span class="pre">_fetchone</span></tt> and <tt class="docutils literal"><span class="pre">_fetchall</span></tt>. Add a <tt class="docutils literal"><span class="pre">flips</span></tt> table
+to <tt class="docutils literal"><span class="pre">init_tables</span></tt> and write the following functions:</p>
+<ul class="last simple">
+<li><tt class="docutils literal"><span class="pre">get_users()</span> <span class="pre">=&gt;</span> <span class="pre">list</span> <span class="pre">of</span> <span class="pre">users</span></tt></li>
+<li><tt class="docutils literal"><span class="pre">create_flip(username,</span> <span class="pre">flip)</span> <span class="pre">=&gt;</span> <span class="pre">True</span> <span class="pre">or</span> <span class="pre">False</span></tt></li>
+<li><tt class="docutils literal"><span class="pre">get_flips(username)</span> <span class="pre">=&gt;</span> <span class="pre">list</span> <span class="pre">of</span> <span class="pre">flips,</span> <span class="pre">sorted</span> <span class="pre">newest</span> <span class="pre">to</span> <span class="pre">oldest</span></tt></li>
+</ul>
+</div>
+</div>
+<div class="section" id="api-routes-web-site">
+<h2>API + Routes = Web Site<a class="headerlink" href="#api-routes-web-site" title="Permalink to this headline">¶</a></h2>
+<p>Flipper&#8217;s structure should becoming clear. Recall these routes:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">routes</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;/login&#39;</span><span class="p">,</span> <span class="n">login_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/logout&#39;</span><span class="p">,</span> <span class="n">logout_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/user/(?P&lt;username&gt;\w+)&#39;</span><span class="p">,</span> <span class="n">user_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/about&#39;</span><span class="p">,</span> <span class="n">about_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="n">index_app</span><span class="p">)]</span>
+</pre></div>
+</div>
+<p>We can now build a real <tt class="docutils literal"><span class="pre">user_app</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">user_app</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">flipper</span><span class="o">.</span><span class="n">get_user</span><span class="p">(</span><span class="n">username</span><span class="p">)</span>
+    <span class="n">flips</span> <span class="o">=</span> <span class="n">flipper</span><span class="o">.</span><span class="n">get_flips</span><span class="p">(</span><span class="n">username</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">user</span> <span class="ow">and</span> <span class="n">flips</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">flipper</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="s">&#39;user.html&#39;</span><span class="p">,</span>
+                              <span class="p">{</span> <span class="s">&#39;user&#39;</span><span class="p">:</span> <span class="n">user</span><span class="p">,</span>
+                                <span class="s">&#39;flips&#39;</span><span class="p">:</span> <span class="n">flips</span> <span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">webob</span><span class="o">.</span><span class="n">exc</span><span class="o">.</span><span class="n">HTTPNotFound</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Construct an <tt class="docutils literal"><span class="pre">about_app</span></tt> that renders a static page
+describing the Flipper, and a <tt class="docutils literal"><span class="pre">user_app</span></tt> that renders a list of
+flips. You can directly call your <tt class="docutils literal"><span class="pre">create_flip</span></tt> function from a
+script to insert data into the system for the time being for
+testing purposes.</p>
+</div>
+</div>
+<div class="section" id="representational-state-transfer">
+<h2>Representational State Transfer<a class="headerlink" href="#representational-state-transfer" title="Permalink to this headline">¶</a></h2>
+<p>REST is a method of organizing resources and actions that follows a
+few well laid out guidelines. It&#8217;s become a bit of a buzzword in
+recent years, and is often times mentioned with web based APIs, though
+the ideas aren&#8217;t necessarily restricted to just APIs. The <a class="reference external" href="http://en.wikipedia.org/wiki/Representational_State_Transfer">Wikipedia
+article</a> about
+REST is good.</p>
+<p>The REST guidelines are not tied to any specific protocol, though the
+most well known implementation is the HTTP standard. As a result, if
+you hear talk about a REST interface, it&#8217;s usually implied that it&#8217;s
+built on top of HTTP requests.</p>
+<p>An HTTP request is a (usually) short lived TCP connection and exchange
+of information between a client (browser) and web server (Apache,
+Nginx, or Flipper in our clase). The client supplies key-value pairs
+of information known as the headers, as well a set of variable name to
+value mappings to the server. As we&#8217;ve previously seen, if the name /
+value mappings are sent embedded in the URL, they are called query
+parameters. If they are sent in the body of the request, and thus
+hidden from view except through an inspection of data on the wire,
+they are called POST variables.</p>
+<p>Each HTTP request is accompanied by a method type, which roughly
+defines the intent of the request. One advantage for doing so is that
+the HTTP aware layers between the client and server can use the method
+type to decide on various kinds of optimizations. If the HTTP response
+does not specify otherwise, intermediate layers may choose to cache
+data. PUT and DELETE requests are idempotent, and so a client knows it
+may resend them without harm. You&#8217;ve most likely seen a browser
+display an alert when reloading a page, warning that it may have to
+resend data to the server. These are most likely POST requests, which
+are not guaranteed to be idempotent.</p>
+<p>The vast majority of page requests are GETs, and a significant
+fraction are POSTs and PUTs, which are often times mistakenly
+interchanged. DELETEs are rare, though strict-to-the-letter REST
+requires they be used. Some older browsers do not support PUT or
+DELETE for <em>page requests</em>, however all browsers support all method
+types if called from Javascript. As REST APIs are generally meant to
+be used by programs, method support is essentially a non-issue.</p>
+<p>We will be coming back to REST when we look at AJAX and how to build
+highly interactive pages.</p>
+</div>
+<div class="section" id="the-form-loop">
+<h2>The Form Loop<a class="headerlink" href="#the-form-loop" title="Permalink to this headline">¶</a></h2>
+<p>HTML forms are interface elements that allow a user to type in data
+into fields on a web page and send it to the server. The server
+receives the data and validates the input, ie ensures that the values
+make sense and can be safely used to manipulate the internal
+state.</p>
+<p>An HTML form element looks like:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="nt">&lt;form</span> <span class="na">action=</span><span class="s">&quot;/edit&quot;</span> <span class="na">method=</span><span class="s">&quot;post&quot;</span><span class="nt">&gt;</span>
+  username: <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;text&quot;</span> <span class="na">name=</span><span class="s">&quot;username&quot;</span> <span class="nt">/&gt;</span>
+  password: <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;text&quot;</span> <span class="na">name=</span><span class="s">&quot;password&quot;</span> <span class="nt">/&gt;</span>
+
+  <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;submit&quot;</span> <span class="na">value=</span><span class="s">&quot;submit&quot;</span> <span class="nt">/&gt;</span>
+<span class="nt">&lt;/form&gt;</span>
+</pre></div>
+</div>
+<p>This form element defines two input fields and a submit button. On
+submission, the browser performs a <tt class="docutils literal"><span class="pre">POST</span></tt> request to the <tt class="docutils literal"><span class="pre">/edit</span></tt>
+path with variables <tt class="docutils literal"><span class="pre">userame</span></tt> and <tt class="docutils literal"><span class="pre">password</span></tt> filled in with the
+input the user&#8217;s input.</p>
+<p>On the server side, we receive a request like:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">signup_view</span><span class="p">(</span><span class="n">req</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">req</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">username</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">str_params</span><span class="p">[</span><span class="s">&#39;username&#39;</span><span class="p">]</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">str_params</span><span class="p">[</span><span class="s">&#39;password&#39;</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="s">&quot;signup received for </span><span class="si">%s</span><span class="s"> with password </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">webob</span><span class="o">.</span><span class="n">exc</span><span class="o">.</span><span class="n">HTTPNotFound</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The typical form submission loop, then, looks like:</p>
+<ol class="arabic simple">
+<li>Render form html for user, browser waits for user input.</li>
+<li>User clicks submit.</li>
+<li>Browser sends data to server.</li>
+<li>Server processes data. On success, renders success page. On
+failure, renders failure page (or input page with failure
+indications).</li>
+</ol>
+</div>
+<div class="section" id="validation">
+<h2>Validation<a class="headerlink" href="#validation" title="Permalink to this headline">¶</a></h2>
+<p>Step #4 from the form loop generally contains two parts: validation of
+input data, and subsequent manipulation of model. This usually fits a
+pattern like:</p>
+<div class="highlight-python"><pre>data = receive data from client
+form = schema of valid data
+if form(data).is_valid():
+    process(data)
+    if processing succeded:
+        return success page
+
+return error page to user with helpful message</pre>
+</div>
+<p>We will be using <a class="reference external" href="http://formencode.org">FormEncode</a>, which is a
+library that provides handy validation and a framework for
+constructing compound validators (checks between two fields in a form,
+such as &#8220;password&#8221; and &#8220;re-enter password&#8221;).</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>Note that FormEncode has a decent high level description of
+what it does and how it works, however detailed information about
+validators are located in docstrings. You can view those by
+starting up a Python interpreter and running the <tt class="docutils literal"><span class="pre">help</span></tt> command:</p>
+<div class="last highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">formencode.validators</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">help</span><span class="p">(</span><span class="n">formencode</span><span class="o">.</span><span class="n">validators</span><span class="o">.</span><span class="n">String</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<p>We generally want the error page to be the same as the input page, so
+that a user can fix input and resubmit. A straightforward way to
+achieve this is by submitting an error context variable into the form
+submission page template. Take, for example, this basic page:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="nt">&lt;html&gt;</span>
+
+  <span class="c">&lt;!-- header here... --&gt;</span>
+
+  <span class="nt">&lt;body&gt;</span>
+
+    <span class="c">&lt;!-- This html page is at the /edit path. Note the following</span>
+<span class="c">         form posts to /edit as well. --&gt;</span>
+
+    <span class="nt">&lt;form</span> <span class="na">name=</span><span class="s">&quot;input&quot;</span> <span class="na">action=</span><span class="s">&quot;/edit&quot;</span> <span class="na">method=</span><span class="s">&quot;post&quot;</span><span class="nt">&gt;</span>
+      username: <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;text&quot;</span> <span class="na">name=</span><span class="s">&quot;username&quot;</span> <span class="nt">/&gt;</span>
+      password: <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;text&quot;</span> <span class="na">name=</span><span class="s">&quot;password&quot;</span> <span class="nt">/&gt;</span>
+
+      <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;submit&quot;</span> <span class="na">value=</span><span class="s">&quot;submit&quot;</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;/form&gt;</span>
+  <span class="nt">&lt;/body&gt;</span>
+
+<span class="nt">&lt;/html&gt;</span>
+</pre></div>
+</div>
+<p>We can modify it like so:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="nt">&lt;form</span> <span class="na">name=</span><span class="s">&quot;input&quot;</span> <span class="na">action=</span><span class="s">&quot;/edit&quot;</span> <span class="na">method=</span><span class="s">&quot;post&quot;</span><span class="nt">&gt;</span>
+  {% if errors.username %}
+  <span class="nt">&lt;span&gt;</span>{{ errors.username }}<span class="nt">&lt;/span&gt;</span>
+  {% endif %}
+  username: <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;text&quot;</span> <span class="na">name=</span><span class="s">&quot;username&quot;</span> <span class="nt">/&gt;</span>
+
+  {% if errors.password %}
+  <span class="nt">&lt;span&gt;</span>{{ errors.password }}<span class="nt">&lt;/span&gt;</span>
+  {% endif %}
+  password: <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;text&quot;</span> <span class="na">name=</span><span class="s">&quot;password&quot;</span> <span class="nt">/&gt;</span>
+
+  <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">&quot;submit&quot;</span> <span class="na">value=</span><span class="s">&quot;submit&quot;</span> <span class="nt">/&gt;</span>
+<span class="nt">&lt;/form&gt;</span>
+</pre></div>
+</div>
+<p>And now when we render the template, we pass in appropriate context
+info:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">errors</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">if</span> <span class="n">req</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s">&#39;POST&#39;</span><span class="p">:</span>
+    <span class="c"># try to validate and modify data</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">schema</span> <span class="o">=</span> <span class="n">SignupSchema</span><span class="p">()</span>
+        <span class="n">cleaned_data</span> <span class="o">=</span> <span class="n">schema</span><span class="o">.</span><span class="n">to_python</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">str_params</span><span class="p">)</span>
+        <span class="c"># if we get here, this means that validation succeeded</span>
+        <span class="n">do_something_with_data</span><span class="p">(</span><span class="n">cleaned_data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">flipper</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="s">&#39;signup_complete.html&#39;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">formencode</span><span class="o">.</span><span class="n">Invalid</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">unpack_errors</span><span class="p">()</span>
+
+<span class="k">return</span> <span class="n">flipper</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="s">&#39;signup.html&#39;</span><span class="p">,</span>
+                      <span class="p">{</span> <span class="s">&#39;errors&#39;</span><span class="p">:</span> <span class="n">errors</span> <span class="p">})</span>
+</pre></div>
+</div>
+<p>On the first <tt class="docutils literal"><span class="pre">GET</span></tt> request, the <tt class="docutils literal"><span class="pre">errors</span></tt> dict will be empty, and
+so the rendering of <tt class="docutils literal"><span class="pre">signup.html</span></tt> will not produce any of the error
+message spans. If the user submits the form, the <tt class="docutils literal"><span class="pre">POST</span></tt> request will
+come through and get caught in the validation <tt class="docutils literal"><span class="pre">try</span> <span class="pre">/</span> <span class="pre">except</span></tt>
+block. If there is a validation error, <tt class="docutils literal"><span class="pre">errors</span></tt> gets populated, and
+subsequently rendered. If validation succeeds, we render the
+<tt class="docutils literal"><span class="pre">signup_complete.html</span></tt> template.</p>
+<p>We are now ready to create a <tt class="docutils literal"><span class="pre">/flip</span></tt> route. Here is the route structure with <tt class="docutils literal"><span class="pre">/flip</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">routes</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;/login&#39;</span><span class="p">,</span> <span class="n">login_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/logout&#39;</span><span class="p">,</span> <span class="n">logout_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/flip&#39;</span><span class="p">,</span> <span class="n">flip_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/user/(?P&lt;username&gt;\w+)&#39;</span><span class="p">,</span> <span class="n">user_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/about&#39;</span><span class="p">,</span> <span class="n">about_app</span><span class="p">),</span>
+          <span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="n">index_app</span><span class="p">)]</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Construct <tt class="docutils literal"><span class="pre">flip_app</span></tt>, which should be a page where the
+user can type in a username and flip text, both of which should be
+validated as being non-empty, submit the data, and have it recorded
+via the <tt class="docutils literal"><span class="pre">create_flip</span></tt> model function. The flip schema should
+additionally allow only flips of 140 characters (use the <tt class="docutils literal"><span class="pre">max</span></tt>
+argument to the <tt class="docutils literal"><span class="pre">String</span></tt> validator).</p>
+</div>
+</div>
+<div class="section" id="cookies">
+<h2>Cookies<a class="headerlink" href="#cookies" title="Permalink to this headline">¶</a></h2>
+<p><a class="reference external" href="http://en.wikipedia.org/wiki/HTTP_cookie">Cookies</a> are pieces of
+information that are stored in a user&#8217;s browsing session, transmitted
+to the server on each page request, and able to be manipulated by the
+server in the page response. Without cookies, browsers are stateless
+across page requests, and so interactions involving multiple pages
+would be difficult, but not impossible. (How else might you transfer
+state across page requests?)</p>
+<p>There are two notable problems with cookies:</p>
+<ol class="arabic simple">
+<li>Cookie data can be sniffed off the wire through unencrypted http
+requests. Thus, they should not hold sensitive information.</li>
+<li>Cookie data is included in both requests to the server and
+responses from the server. If the amount of data is large, this can
+affect performance.</li>
+</ol>
+<p>To solve these problems, web frameworks provide session handling,
+which is a mechanism for storing data on the server that is linked up
+with a unique id stored in a client cookie.</p>
+<p>On a user&#8217;s first visit to a site, the server creates a unique id that
+it places inside of a cookie, which is then recorded by the user&#8217;s
+browser. On the next page request, the browser sends that unique id to
+the server, which can match it against data it is storing in the
+database on behalf of the user.</p>
+<p>A common use for sessions is to hold authentication information. You
+might have a login app like so:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">login_app</span><span class="p">(</span><span class="n">req</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">req</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s">&#39;POST&#39;</span><span class="p">:</span>
+        <span class="n">username</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">str_params</span><span class="p">[</span><span class="s">&#39;username&#39;</span><span class="p">]</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">str_params</span><span class="p">[</span><span class="s">&#39;password&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">is_auth</span><span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">):</span>
+            <span class="n">session</span> <span class="o">=</span> <span class="n">get_session</span><span class="p">(</span><span class="n">req</span><span class="p">)</span>
+            <span class="n">session</span><span class="p">[</span><span class="s">&#39;username&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">username</span>
+            <span class="k">return</span> <span class="n">flipper</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="s">&#39;login_successful.html&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">flipper</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="s">&#39;login_failed.html&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>And a logout app:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">logout_app</span><span class="p">(</span><span class="n">req</span><span class="p">):</span>
+    <span class="n">session</span> <span class="o">=</span> <span class="n">get_session</span><span class="p">(</span><span class="n">req</span><span class="p">)</span>
+    <span class="k">del</span> <span class="n">session</span><span class="p">[</span><span class="s">&#39;username&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>We will be using Paste&#8217;s <a class="reference external" href="http://pythonpaste.org/modules/session.html">session handling middleware</a>, which is sufficient
+for Flipper, though not production quality. A production quality
+session handling middleware would have at a minimum database
+support. There are many options in the WSGI world.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>Write a proper <tt class="docutils literal"><span class="pre">login_app</span></tt> and <tt class="docutils literal"><span class="pre">logout_app</span></tt> that uses
+form validation for checking input (don&#8217;t forget to specify a
+maximum size for username and password fields!), and for checking
+the user&#8217;s password against the database.</p>
+<p>Write <tt class="docutils literal"><span class="pre">signup_app</span></tt>, which should, obviously, provide an interface
+for the user to sign up for your site. It should at a minimum
+perform these validations:</p>
+<ol class="arabic simple">
+<li>Usernames should be alphanumeric and be no more than 10
+characters long. Usernames should also not already be used in
+the system.</li>
+<li>Passwords should be no more than 20 characters long.</li>
+<li>The account creation form should ask for the password twice and
+verify that both inputs match.</li>
+</ol>
+<p>Add any other validations that you think might be necessary.</p>
+<p class="last">Storing passwords in the database might pose a security risk if
+your site were to be hacked, or a disgruntled, unethical, or
+coerced employee were to peek at the database. A common technique
+for handling these situations is to store the password using a one
+way hash, such as MD5 or SHA. Because there is no (known) way to
+recover the original password from the database, you reduce the
+potential for leaking sensitive information. Implement this for
+your authentication scheme using Python&#8217;s <tt class="docutils literal"><span class="pre">hashlib</span></tt> module.</p>
+</div>
+</div>
+<div class="section" id="following">
+<h2>Following<a class="headerlink" href="#following" title="Permalink to this headline">¶</a></h2>
+<p>We will now construct a simple &#8220;follow&#8221; feature, which will allow
+users to keep track of other user&#8217;s flips.</p>
+<p>First, build the <tt class="docutils literal"><span class="pre">follow</span></tt> table:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="15%" />
+<col width="40%" />
+<col width="45%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">id</th>
+<th class="head">username</th>
+<th class="head">following</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>1</td>
+<td>wes</td>
+<td>chris</td>
+</tr>
+<tr><td>2</td>
+<td>wes</td>
+<td>roy</td>
+</tr>
+<tr><td>3</td>
+<td>chris</td>
+<td>wes</td>
+</tr>
+</tbody>
+</table>
+<p>In this example, Wes is following Chris and Roy, and Chris is
+following Wes. Roy marches to the beat of his own drummer.</p>
+<p>This schema should lend itself naturally to an SQL query to produce
+the most recent flips for the set of all followed users. You could
+also perform a multistep query: one to lookup the followed users, and
+then a query for each of them, plus an aggregation step to combine the
+results into a single sequence. This latter method is more
+inefficient, because of the multiple disk accesses, however it may be
+easier to understand.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>Build the follow table, and write <tt class="docutils literal"><span class="pre">add_follow</span></tt> and
+<tt class="docutils literal"><span class="pre">get_followed_flips</span></tt> into the API.</p>
+<p class="last">Next, place an input field on the user&#8217;s page that appears only if
+the user is logged in, and allows the user to enter the username of
+someone he wants to follow.</p>
+</div>
+</div>
+<div class="section" id="denormalization">
+<h2>Denormalization<a class="headerlink" href="#denormalization" title="Permalink to this headline">¶</a></h2>
+<p>If user Jack flips &#8220;ahoy, &#64;Jill&#8221;, Jill may want to be notified of this
+direct mention. The data is all in the <tt class="docutils literal"><span class="pre">flip</span></tt> column of the <tt class="docutils literal"><span class="pre">flip</span></tt>
+table, however a linear search of all the entries for &#8220;&#64;Jill&#8221; would
+become increasingly inefficient as the site accumulates flips.</p>
+<p>To solve this, we can build what is known as a reverse index. Each
+time that we write a flip to the database, we can check the text for a
+mention and insert an entry into another table that is keyed on
+username. For example, consider the flip:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="7%" />
+<col width="19%" />
+<col width="45%" />
+<col width="29%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">id</th>
+<th class="head">username</th>
+<th class="head">time</th>
+<th class="head">flip</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>4</td>
+<td>chris</td>
+<td>2011-06-10 23:32:11</td>
+<td>&#64;wes I agree</td>
+</tr>
+</tbody>
+</table>
+<p>We can extract &#8220;&#64;wes&#8221; (most conveniently done with regexes) from the
+flip and insert that into a <tt class="docutils literal"><span class="pre">mention</span></tt> table:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="24%" />
+<col width="21%" />
+<col width="56%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">username</th>
+<th class="head">flip_id</th>
+<th class="head">time</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>wes</td>
+<td>4</td>
+<td>2011-06-10 23:32:11</td>
+</tr>
+</tbody>
+</table>
+<p>A search for wes&#8217;s most recent mentions is now a straightforward
+efficient query. The inclusion of the timestamp allows us to easily
+limit the number of &#8220;most recent&#8221; flips we show the user.</p>
+<p>The reverse index is an example of what is called data
+denormalization. Normalization (without the <em>de</em>) is a generally good
+practice in which you design your data model so that every piece of
+information is stored in a single location. This reduces the
+possibility of bugs creeping into the system in different places and
+causing data to diverge.</p>
+<p>Suppose we were to build an interface that allowed a user to edit a
+flip. If the user were to remove a mention, then we would have to be
+careful to also remove the corresponding entry in the <tt class="docutils literal"><span class="pre">mention</span></tt>
+table. Because information about whether or not flip #4 contains a
+mention to Wes is contained in two different locations, our code must
+be careful to stay consistent. In a much larger, complex system, the
+engineer responsible for the &#8220;edit flip&#8221; feature may not be the same
+engineer who built the mention system, and the two may not even be
+employed at the company at the same time! Poor programming practices
+or communication may lead to the introduction of some subtle bugs.</p>
+<p>There is a principle called <a class="reference external" href="http://en.wikipedia.org/wiki/Don't_repeat_yourself">Don&#8217;t Repeat Yourself</a> (DRY), which
+stresses that there should be a single authoritative location for any
+piece of data or code.</p>
+<p>But as you have seen in this simple situation, denormalization is
+difficult to avoid. In this case, we could have kept the data
+normalized if we relied on SQLite&#8217;s full text search capabilities,
+however that would not have made for an interesting exercise. Using
+the built-in FTS also means that we would have no control over
+stemming or input transformations (like spell checking) that would
+allow us to produce more robust search solutions for the user. FTS is
+also not a part of standard SQL, so it would have tied us down to
+SQLite, or required re-implementation if we moved to another SQL
+server.</p>
+<p>We could have taken our denormalization one step further. Notice that
+producing a list of mentions for a user requires at least two queries
+to the database: one to get the flip IDs, and one to get the content
+of the flips. We could eliminate the second query simply by storing
+the content of the flip directly in the <tt class="docutils literal"><span class="pre">mention</span></tt> table.</p>
+<p>Denormalization is a tool that can be incredibly useful if judiciously
+used.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>Create a <tt class="docutils literal"><span class="pre">mention</span></tt> table, an API for adding entries and
+retrieving flip IDs from the <tt class="docutils literal"><span class="pre">mention</span></tt> table, and modify the
+<tt class="docutils literal"><span class="pre">create_flip</span></tt> function to build the reverse index. Note that
+there could be multiple mentions within a single flip.</p>
+<p>Add into the user page view a list of the 5 most recent mentions.</p>
+<p>Construct a similar system for <a class="reference external" href="http://en.wikipedia.org/wiki/Hashtag#Hashtags">hashtags</a>, which are user
+generated subject identifiers that begin with a &#8220;#&#8221;.</p>
+<p class="last">Construct an <tt class="docutils literal"><span class="pre">index_app</span></tt> which has an input field that takes a
+series of hashtags and displays the most recent flips with that
+hashtag.</p>
+</div>
+</div>
+<div class="section" id="caching">
+<h2>Caching<a class="headerlink" href="#caching" title="Permalink to this headline">¶</a></h2>
+<p>Here are some numbers that every engineer should know (as of 2010),
+excerpted from <a class="reference external" href="http://www.quora.com/What-are-the-numbers-that-every-computer-engineer-should-know-according-to-Jeff-Dean">here</a>:</p>
+<ul class="simple">
+<li>Main memory reference: 100 ns <a class="footnote-reference" href="#id8" id="id7">[3]</a></li>
+<li>Send 2K bytes over 1 Gbps network: 20,000 ns</li>
+<li>Read 1 MB sequentially from memory: 250,000 ns</li>
+<li>Round trip within same datacenter: 500,000 ns</li>
+<li>Disk seek: 10,000,000 ns</li>
+<li>Read 1 MB sequentially from network: 10,000,000 ns</li>
+<li>Read 1 MB sequentially from disk: 30,000,000 ns</li>
+</ul>
+<p>Note the orders of magnitude difference between access times for RAM
+and disk. This suggests that if we can avoid touching disk, we should.</p>
+<p>For Flipper, we will build a simple in-memory caching system modeled
+after one you might find in production frameworks. Our caching system
+will have a few essential functions:</p>
+<ol class="arabic simple">
+<li>Store Python objects in memory.</li>
+<li>Associate expiration times with objects.</li>
+<li>Clear out expired items.</li>
+<li>If full, remove items according to a least recently used algorithm.</li>
+</ol>
+<p>The API should have a flavor like so:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">cache</span> <span class="o">=</span> <span class="n">flipper</span><span class="o">.</span><span class="n">get_cache</span><span class="p">()</span>
+<span class="n">key</span> <span class="o">=</span> <span class="s">&quot;foo&quot;</span>
+<span class="n">expiry</span> <span class="o">=</span> <span class="mi">3600</span> <span class="c"># one hour from now</span>
+
+<span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">cache</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">compute_value</span><span class="p">()</span>
+    <span class="n">cache</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expiry</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span>
+
+<span class="n">cache</span><span class="o">.</span><span class="n">expire</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="c"># manually invalidate the key</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>Build the cache API. I will leave the implementation up to
+you.</p>
+<p class="last">Once the cache API is stable and tested, use it to cache flip
+lookups in <tt class="docutils literal"><span class="pre">user_app</span></tt> and search results. Be sure to invalidate
+the appropriate cache entries when new data enters the system.</p>
+</div>
+<table class="docutils footnote" frame="void" id="id8" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id7">[3]</a></td><td><p class="first">Additional numbers:</p>
+<ol class="arabic simple">
+<li>L1 cache reference: 0.5 ns</li>
+<li>L2 cache reference: 7 ns</li>
+<li>Main memory reference: 100 ns</li>
+</ol>
+<p>What you learn in school is that algorithmic order of growth
+overshadows constant factors. In most cases you should prefer the
+algorithm that has a slower growth function. However, consider that
+the difference between L1 access time and main memory is a factor
+of 200! For a small enough input size, it may actually be faster to
+use a less efficient algorithm if it means that all of the data can
+fit within the processor cache.</p>
+<p>The same principle applies to disk and memory access. It is
+sometimes faster to use a less efficient algorithm that sits entire
+in RAM than a more efficient one that has to touch disk.</p>
+<p class="last">Missing from this list of numbers is Solid State Drive, which has
+an access time around 100,000 ns.</p>
+</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="federation">
+<h2>Federation<a class="headerlink" href="#federation" title="Permalink to this headline">¶</a></h2>
+<p>Constant outage was a problem with Twitter in the early days, so much
+so that their &#8220;fail whale&#8221; server error page <a class="reference external" href="http://www.readwriteweb.com/archives/the_story_of_the_fail_whale.php">became an iconic image</a>. One
+route Twitter could have gone to scale out would have been to build a
+federated protocol, ie one in which any number of site administrators
+could run identical copies of the Twitter service, which would
+communicate with each other in a similar way as Mail Transfer Agents
+(email), and Jabber (Google Chat).</p>
+<p>In a federated system, one or more components of it can fail without
+affecting the overall system. Distribution of components has
+advantages, but also can suffer from complexity and consistency
+issues. The CAP theorem states that in a distributed system, you can
+have only two of thee properties: consistent data, system
+availability, and tolerance to network (communication) partitions. We
+will choose a simple protocol that will allow for <a class="reference external" href="http://www.allthingsdistributed.com/2008/12/eventually_consistent.html">eventual
+consistency</a>,
+ie different portions of our system may have a different view of the
+data in the entire system, but will be tolerant to network and system
+outages and will converge on the &#8220;correct&#8221; view eventually.</p>
+<p>Suppose that we have two Flipper servers running at <tt class="docutils literal"><span class="pre">local.com</span></tt> and
+<tt class="docutils literal"><span class="pre">foreign.com</span></tt>, and Jack at <tt class="docutils literal"><span class="pre">local</span></tt> wants to follow user Jill at
+<tt class="docutils literal"><span class="pre">foreign</span></tt>. Jack should be able to go to his own page and enter in
+<tt class="docutils literal"><span class="pre">jill&#64;foreign.com</span></tt>, which will make an entry in his <tt class="docutils literal"><span class="pre">follow</span></tt>
+table.</p>
+<p>The original <tt class="docutils literal"><span class="pre">follow</span></tt> table assumes that all users reside on the
+same system, and so needs a bit of tweaking to support foreign Flipper
+servers. One way to do this is to build a new column containing the
+server name if the follow entry is to a foreign user, but blank if it
+is for a local user.</p>
+<p>Once that is in place, the code for looking up flips will need to be
+modified to retrieve data from the remote Flipper server. The local
+Flipper can do this with a technique known as screen scraping: it can
+make an HTTP request to the foreign user&#8217;s page, parse the resulting
+HTML, and display that to the local user. This can problematic. In
+particular, programmatic HTTP libraries seldom have Javascript
+support, and many sites insert data into the DOM tree after page load,
+using a technique known as Ajax. We will not go into it now, but
+suffice it to say, screen scraping is becoming harder to do as sites
+become more dynamic.</p>
+<p>Instead, we will build a protocol using a data interchange format
+called <a class="reference external" href="http://www.json.org/">JSON</a>. JSON is a syntax for expressing
+arrays and dictionaries of common data types (strings, integers, and
+floating points) which is identical to Javascript syntax. The
+convenience here is that Javascript, which is most commonly used for
+client side interactions on a site, can load a JSON encoded object
+from an HTTP request and simply use the <tt class="docutils literal"><span class="pre">eval</span></tt> function to turn it
+into a native object. JSON libraries are simple enough to implement
+that all major languages have done so, and thus it makes for a
+reasonable, simple method for interchanging data between programming
+languages and platforms. <a class="footnote-reference" href="#id10" id="id9">[4]</a></p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>This exercise consists of several components:</p>
+<ol class="last arabic simple">
+<li>Appropriately modify the <tt class="docutils literal"><span class="pre">follow</span></tt> table to accept foreign
+users.</li>
+<li>Modify follow box if necessary to accept input for foreign
+users.</li>
+<li>Expose a user&#8217;s flips as a JSONized array using Python&#8217;s
+<tt class="docutils literal"><span class="pre">simplejson</span></tt> module. This should be done in the <tt class="docutils literal"><span class="pre">user_app</span></tt>
+path if a special query variable called <tt class="docutils literal"><span class="pre">format</span></tt> is set to
+<tt class="docutils literal"><span class="pre">json</span></tt>.</li>
+<li>Write a library that takes a foreign username and a hostname and
+uses the Python <tt class="docutils literal"><span class="pre">urllib</span></tt> library to retrieve that user&#8217;s flips
+in JSON format. Note that to achieve system availability
+(stability), your program can not crash and burn should
+something go wrong with the request to the foreign server. Thus,
+it must handle several cases: HTTP and network protocol errors,
+data errors, and timeouts (a slow remote server should not sieze
+up the page for the local user).</li>
+<li>Tie it all together: when displaying followed flips, you must
+now make remote calls to all foreign servers to retrieve flips
+for the local user.</li>
+</ol>
+</div>
+<p>If all goes well, your Flipper server should now be able to
+communicate with other Flipper servers. Try it!</p>
+<table class="docutils footnote" frame="void" id="id10" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id9">[4]</a></td><td>Other popular data interchange formats include <a class="reference external" href="http://en.wikipedia.org/wiki/XML">XML</a>, <a class="reference external" href="http://code.google.com/p/protobuf/">protobuf</a>, and <a class="reference external" href="http://msgpack.org/">MessagePack</a>.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="background-processing">
+<h2>Background Processing<a class="headerlink" href="#background-processing" title="Permalink to this headline">¶</a></h2>
+<p>Notice that if a remote server is slow or unavailable, step #4 could
+be quite inefficient, as rendering a user&#8217;s page depends on making
+multiple remote Flipper calls.</p>
+<p>Some actions do not necessarily have to affect the system instantly,
+and so it might be ok to offload computation into a separate process
+if the user can tolerate some delay. In this case, we will retrieve
+and cache flip data inside of the database in a background process
+that runs outside of the web server.</p>
+<p>We will make use of what is called a producer/consumer
+queue. Typically, this design pattern requires the maintenance of a
+separate queuing structure, where a producer inserts jobs, and a
+consumer pulls jobs off and processes them. Our structure is a bit
+different &#8211; jobs will be permanent entries in a special
+<tt class="docutils literal"><span class="pre">follow_list</span></tt> table which contains a remote user, remote host, and
+<tt class="docutils literal"><span class="pre">last_updated</span></tt> column, which will contain a timestamp with a default
+value of 0. Note that Jill&#8217;s flips only need to be pulled down once to
+satisfy all of the followers on <tt class="docutils literal"><span class="pre">local.com</span></tt>, which is why we do not
+simply store <tt class="docutils literal"><span class="pre">last_updated</span></tt> in the <tt class="docutils literal"><span class="pre">follow</span></tt> table.</p>
+<p>You will need to build an external worker process that queries for new
+follows (or follows that have not been updated since a certain
+threshold, say 10 seconds), fetches updates from the remote server,
+and then updates the timestamp with the current time.</p>
+<p>Once you have a series of flips for the remote user, you&#8217;ll need to
+place these in a <tt class="docutils literal"><span class="pre">follow_cache</span></tt> table for quick access. We must
+appease the data denormalization gods.</p>
+<p>Subsequent calls to <tt class="docutils literal"><span class="pre">user_app</span></tt> for flips should not return duplicate
+data, as this will become unwieldy to transmit as users generate
+flips. Instead, <tt class="docutils literal"><span class="pre">user_app</span></tt> should accept a <tt class="docutils literal"><span class="pre">since</span></tt> parameter in
+conjunction with <tt class="docutils literal"><span class="pre">format=json</span></tt> which will cause it to return only
+flips that have IDs greater than <tt class="docutils literal"><span class="pre">since</span></tt>. <a class="footnote-reference" href="#id13" id="id11">[5]</a></p>
+<p>Because you will be querying on the <tt class="docutils literal"><span class="pre">username</span></tt> and <tt class="docutils literal"><span class="pre">last_updated</span></tt>
+fields in the <tt class="docutils literal"><span class="pre">follow_list</span></tt> table, you will want to build indexes on
+both of those columns. <a class="footnote-reference" href="#id14" id="id12">[6]</a></p>
+<p>Periodic worker functions are set up typically with either a time
+based job system, like Unix&#8217;s cron, or with an infintely looping
+server. The advantage to a system like cron is that you can specify
+your process to run at exact times. The disadvantage is that if your
+processing function begins to take longer than the period at which the
+job is configured to run, multiple instances of your worker process
+will build up and potentially overwhelm the system resources.</p>
+<p>We will use the infinite loop technique since we don&#8217;t care that the
+worker process is run <em>exactly</em> on schedule, but only <em>roughly</em> on
+schedule. It&#8217;s important to sleep for a short period of time (usually
+from a fraction of a second to minutes, depending on the application&#8217;s
+needs) in order to prevent the worker process from spinning and
+consuming all of the system resources. In this case, since we are
+checking for new flips every 10 seconds, a delay of 1 second is
+reasonable.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Make the appropriate modifications to <tt class="docutils literal"><span class="pre">user_app</span></tt>, the API,
+and the database. Write <tt class="docutils literal"><span class="pre">flipper_pull.py</span></tt>, the background worker
+process that pulls remote flips into the system.</p>
+</div>
+<table class="docutils footnote" frame="void" id="id13" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id11">[5]</a></td><td>Why is <tt class="docutils literal"><span class="pre">since</span></tt> the flip ID rather than a timestamp?
+Unfortunately, you can not rely on timestamps from remote sources,
+as it&#8217;s not guaranteed that the remote source actually has a
+correctly set clock. Servers usually run some form of NTP, which is
+a network time syncing protocol, however machines can still be
+subject to clock drift, especially if the hardware is bad and the
+drift is faster than the NTP protocol is allowed to adjust the
+clock. Another possibility is a malicious remote client attempting
+to do something subversive by passing in bad data.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="id14" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id12">[6]</a></td><td>An index on a column that is not the primary key is called a
+&#8220;secondary index&#8221;. Why don&#8217;t we just build a secondary index on
+every column? Indexes require disk space (sometimes more than the
+data itself) and typically take log(n) time to insert a row, where
+n is the number of rows in the table. The space issue is especially
+troublesome if the table approaches the size of main
+memory. Remember that accessing disk is orders of magnitude slower
+than RAM, and so underutilized indexes increase the likelihood that
+an active index will get flushed out of the filesystem cache.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="javascript-and-ajax">
+<h2>Javascript and AJAX<a class="headerlink" href="#javascript-and-ajax" title="Permalink to this headline">¶</a></h2>
+<p>HTML and CSS provide a fine foundation for basic interaction with a
+site. If you want to do the fancy stuff (anything that moves or is
+dynamically updated without changing the URL in the browser), you&#8217;ll
+have to use Javascript.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Peruse <a class="reference external" href="http://www.cs.brown.edu/courses/bridge/1998/res/javascript/javascript-tutorial.html">this Javascript tutorial</a>.</p>
+</div>
+<p>Few people write naked Javascript these days. Instead, they use
+libraries and frameworks, which have varying levels of
+complexity. Popular libraries are: <a class="reference external" href="http://jquery.com/">jQuery</a> and
+<a class="reference external" href="http://jqueryui.com/">jQuery UI</a>, <a class="reference external" href="http://script.aculo.us/">Prototype/Scriptalicious</a>, and <a class="reference external" href="http://developer.yahoo.com/yui/">YUI</a>. We will be using jQuery.</p>
+<p>In addition to the Javascript library, a good debugging tool is
+absolutely essential. <a class="reference external" href="http://getfirebug.com/">Firebug</a> can be
+installed via Firefox, and Chrome ships with debugging tools built in.</p>
+<p>When a page loads, the browser generates a DOM tree from the HTML
+markup, which is what you see if you were to view the source of the
+page. Because the DOM tree corresponds directly to the visual display,
+you will have to manipulate it in order to dynamically update the
+display. Debugging DOM manipulation almost always involve inspecting
+the tree using a tool like Firebug.</p>
+<p>Suppose we want to build into Flipper&#8217;s index page an updating list of
+most recent tweets. We can start off with a root for this list in the
+HTML markup:</p>
+<div class="highlight-html"><div class="highlight"><pre><span class="nt">&lt;ul</span> <span class="na">id=</span><span class="s">&quot;flip-root&quot;</span><span class="nt">&gt;</span>
+    <span class="c">&lt;!-- dynamically updated via ajax --&gt;</span>
+<span class="nt">&lt;/ul&gt;</span>
+</pre></div>
+</div>
+<p>Now we can insert items into this root with jQuery:</p>
+<div class="highlight-javascript"><div class="highlight"><pre><span class="nx">$</span><span class="p">(</span><span class="s2">&quot;#flip-root&quot;</span><span class="p">).</span><span class="nx">append</span><span class="p">(</span><span class="s2">&quot;&lt;li&gt;dynamically inserted list item&lt;/li&gt;&quot;</span><span class="p">);</span>
+</pre></div>
+</div>
+<p><tt class="docutils literal"><span class="pre">$</span></tt> is a valid identifier in Javascript. jQuery (and various other
+frameworks) bind the global <tt class="docutils literal"><span class="pre">$</span></tt> name to their library, which is
+essentially a function that can do various things depending on the
+type of its argument.</p>
+<p>In this case, <tt class="docutils literal"><span class="pre">$(&quot;#flip-root&quot;)</span></tt> is what is called a selector, which
+examines the DOM tree for an element with an id of <tt class="docutils literal"><span class="pre">flip-root</span></tt>, and
+produces a jQuery DOM object which has useful functions defined in
+it. The function we use here, <tt class="docutils literal"><span class="pre">append</span></tt>, inserts a new DOM element
+inside of the <tt class="docutils literal"><span class="pre">ul</span></tt> tags.</p>
+<p>The jQuery API is very well <a class="reference external" href="http://docs.jquery.com/Main_Page">documented</a>. The sections on <a class="reference external" href="http://api.jquery.com/category/manipulation/">manipulation</a> and <a class="reference external" href="http://api.jquery.com/category/ajax/">AJAX</a> are essential
+references. jQuery documentation is very extensive, and it has a very
+large user base. Thus, there are many <a class="reference external" href="http://docs.jquery.com/Tutorials">tutorials</a>.</p>
+<p>jQuery infers a lot from its arguments (in fact, this is par for the
+course in Javscript coding culture). If the argument to <tt class="docutils literal"><span class="pre">append</span></tt> is
+a string, jQuery will parse it as if it is HTML and create a new DOM
+object. You can also pass in a jQuery object into append:</p>
+<div class="highlight-javascript"><div class="highlight"><pre><span class="kd">var</span> <span class="nx">li</span> <span class="o">=</span> <span class="nx">$</span><span class="p">(</span><span class="s2">&quot;&lt;li&gt;dynamically inserted list item&lt;/li&gt;&quot;</span><span class="p">);</span>
+<span class="nx">$</span><span class="p">(</span><span class="s2">&quot;#flip-root&quot;</span><span class="p">).</span><span class="nx">append</span><span class="p">(</span><span class="nx">li</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>We can make an AJAX call to the index path like this:</p>
+<div class="highlight-javascript"><div class="highlight"><pre><span class="nx">$</span><span class="p">.</span><span class="nx">get</span><span class="p">({</span> <span class="nx">url</span><span class="o">:</span> <span class="s2">&quot;/&quot;</span><span class="p">,</span>
+        <span class="nx">data</span><span class="o">:</span> <span class="p">{</span> <span class="nx">format</span><span class="o">:</span> <span class="s2">&quot;json&quot;</span> <span class="p">},</span>
+        <span class="nx">success</span><span class="o">:</span> <span class="nx">updateFlips</span><span class="p">,</span>
+        <span class="nx">dataType</span><span class="o">:</span> <span class="s2">&quot;json&quot;</span> <span class="p">});</span>
+</pre></div>
+</div>
+<p>Where <tt class="docutils literal"><span class="pre">updateFlips</span></tt> is a function:</p>
+<div class="highlight-javascript"><div class="highlight"><pre><span class="kd">function</span> <span class="nx">updateFlips</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// data is the decoded json object, so you can do something</span>
+    <span class="c1">// with data[&#39;flip&#39;], for example.</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The Javascript execution model is single threaded, and asynchronous
+events are handled through one of two mechanisms: callbacks and
+signals. We will be dealing only with callbacks.</p>
+<p>All interaction on a page is halted while Javascript runs, so an
+errant program can effectively lock up a browser window if written
+poorly. Most browsers will detect this and give the user the option to
+kill the window if this happens.</p>
+<p>The <tt class="docutils literal"><span class="pre">$.get</span></tt> example attempts to retrieve the page at <tt class="docutils literal"><span class="pre">/</span></tt>, which
+could block (or not return at all). The browser puts this portion of
+the call in the background (the &#8220;asynchronous&#8221; in the AJAX acronym),
+and execution continues past the <tt class="docutils literal"><span class="pre">$.get</span></tt>. When it completes, the
+browser returns control back to the user and waits for input. If the
+call to <tt class="docutils literal"><span class="pre">/</span></tt> completes before any user input, the browser fires off
+the Javascript interpreter again and executes the <tt class="docutils literal"><span class="pre">updateFlips</span></tt>
+function.</p>
+<p>To clarify, suppose that we have a call to <tt class="docutils literal"><span class="pre">/foo</span></tt>, which blocks for
+10 seconds.</p>
+<div class="highlight-javascript"><div class="highlight"><pre><span class="nx">$</span><span class="p">.</span><span class="nx">get</span><span class="p">({</span> <span class="nx">url</span><span class="o">:</span> <span class="s2">&quot;/foo&quot;</span><span class="p">,</span>
+        <span class="nx">data</span><span class="o">:</span> <span class="p">{</span> <span class="nx">format</span><span class="o">:</span> <span class="s2">&quot;json&quot;</span> <span class="p">},</span>
+        <span class="nx">success</span><span class="o">:</span> <span class="nx">successCallback</span><span class="p">,</span>
+        <span class="nx">dataType</span><span class="o">:</span> <span class="s2">&quot;json&quot;</span> <span class="p">});</span>
+
+<span class="nx">alert</span><span class="p">(</span><span class="s1">&#39;waiting for foo...&#39;</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>The browser pops open an alert box <a class="footnote-reference" href="#id16" id="id15">[7]</a> <em>immediately</em> after the
+<tt class="docutils literal"><span class="pre">get</span></tt> call, <em>not</em> after 10 seconds. After clearing the box, the user
+can continue to use the page. 10 seconds later, <tt class="docutils literal"><span class="pre">successCallback</span></tt>
+will get called, assuming that no other Javascript is running at that
+time. If other Javascript code is running, then <tt class="docutils literal"><span class="pre">successCallback</span></tt> is
+queued up to run at some point the interpreter becomes free. Note that
+if the user browses away from the page before <tt class="docutils literal"><span class="pre">/foo</span></tt> returns,
+<tt class="docutils literal"><span class="pre">successCallback</span></tt> will never get called. Exactly when
+<tt class="docutils literal"><span class="pre">successCallback</span></tt> will be called is undefined.</p>
+<p>The callback strategy is a common pattern, however it can make for
+some difficult to debug code. Javascript code should be very well
+documented because of the labyrinthine nature of callbacks.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You should add <tt class="docutils literal"><span class="pre">format</span></tt> and <tt class="docutils literal"><span class="pre">since</span></tt> parameters to
+<tt class="docutils literal"><span class="pre">index_app</span></tt> similar to <tt class="docutils literal"><span class="pre">user_app</span></tt>. Define <tt class="docutils literal"><span class="pre">updateFlips</span></tt> so
+that it takes these flips, builds a <tt class="docutils literal"><span class="pre">li</span></tt> element, and appends it
+into <tt class="docutils literal"><span class="pre">flip-root</span></tt>. It should do this on page load, and then on a
+10 second <a class="reference external" href="http://www.w3schools.com/js/js_timing.asp">timer</a>.</p>
+</div>
+<table class="docutils footnote" frame="void" id="id16" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id15">[7]</a></td><td><tt class="docutils literal"><span class="pre">alert</span></tt> is your best friend. If you want to check if a piece
+of Javascript is getting called, the easiest thing is usually to
+throw in an <tt class="docutils literal"><span class="pre">alert</span></tt> statement. Firebug and Chrome, alternatively,
+have stepping tools.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="production-time">
+<h2>Production Time<a class="headerlink" href="#production-time" title="Permalink to this headline">¶</a></h2>
+<p>You have now completed all the essential activity of a Twitter clone,
+a task that took a handful of professinal developers a weekend to
+build. The big remaining problem is one of scale &#8211; the Flipper system
+as implemented can only be run on a single machine, most optimally
+from within a single process. Your next task is to re-impelement
+Flipper, this time with industrial strength development tools and
+libraries. You should research and assemble the following components
+as a start:</p>
+<ul class="simple">
+<li><a class="reference external" href="http://www.djangoproject.com/">Django</a> for the web framework. It
+will include a routing system, templates, object relational mapper,
+and caching interface that you may find useful.</li>
+<li><a class="reference external" href="http://www.mysql.com/">MySQL</a> will be the backend
+database. Django&#8217;s ORM abstracts the database for development,
+however you will still need to become proficient at examining data
+within the MySQL server.</li>
+<li><a class="reference external" href="http://memcached.org/">Memcached</a>, a caching server.</li>
+<li><a class="reference external" href="http://xapian.org/">Xapian</a>, a full text search engine.</li>
+<li><a class="reference external" href="http://www.blueprintcss.org/">Blueprint</a>, a CSS framework for
+building pages on grid templates. Also examine <a class="reference external" href="http://compass-style.org/">Compass</a> if you are feeling ambitious.</li>
+<li><a class="reference external" href="http://kr.github.com/beanstalkd/">Beanstalk</a>, a produce/consumer
+queue.</li>
+<li><a class="reference external" href="http://jquery.com">jQuery</a>, a Javascript library. jQuery provides
+nicer methods to manipulate browser displays and handle client side
+interaction, as well as a framework for UI widgets.</li>
+</ul>
+<p>The entire team should re-build Flipper as a coordinated effort. Good
+luck!</p>
+</div>
+</div>
+<div class="section" id="software-engineering-good-habits">
+<h1>Software Engineering Good Habits<a class="headerlink" href="#software-engineering-good-habits" title="Permalink to this headline">¶</a></h1>
+<p>As you build Flipper, you should keep in mind some tools and software
+engineering best practices.</p>
+<ul>
+<li><p class="first"><a class="reference external" href="http://mercurial.selenic.com/">Mercurial</a>. Source control becomes
+exponentially more important as your software gains complexity, and
+your team increases in size. It is a tool for allowing you to
+checkpoint your work, try out experiments without fear of losing
+stable work, and coordinate code changes with other
+developers. Everything other than trivial experiments that you plan
+to throw away should be version controlled.</p>
+<p>The two most popular distributed source control systems as of this
+writing are Mercurial and Git. Which one you use is ultimately a
+matter of preference (they are equally powerful and have equally
+large communities), and you will find zealots for both systems. I
+personally find Mercurial commands a little more intuitive and less
+prone to wiping out data. S7 uses Mercurial unless there is a good
+reason not to (a partner we work with already uses Git or CVS, for
+example).</p>
+<p>Joel Spolsky wrote a popular <a class="reference external" href="http://hginit.com/">Mercurial tutorial</a>.</p>
+</li>
+<li><p class="first"><a class="reference external" href="http://en.wikipedia.org/wiki/Unit_testing">Unit Tests</a>. As you
+design and build components of your system, you should make an
+effort to develop APIs so that they are unit testable. Unit tests
+serve not only as a sanity check on the design of an API, but also
+as a reference, and a way to know if a subsequent change broke
+behavior. Python&#8217;s <tt class="docutils literal"><span class="pre">unittest</span></tt> and <tt class="docutils literal"><span class="pre">doctest</span></tt> modules are good
+places to start.</p>
+<p>An essential part of a good unit test suite is that each test is
+independent of every other test.  This lets you run any one test in
+isolation (which is really handy for debugging).  To make this work,
+every test has to start from a known state and perform whatever
+setup is required.  To make this easy, most test frameworks will
+create a brand new test object before running each test (Python&#8217;s
+<tt class="docutils literal"><span class="pre">unittest</span></tt> does this).</p>
+<p>Before you can write a good test, you need to know what you&#8217;re
+testing.  You need to be able to put an object or system into a
+known state, perform some action on it, and then verify that it is
+now in the desired new state.</p>
+<p>There are some tests that can not be done purely on the server
+side. <a class="reference external" href="http://seleniumhq.org/">Selenium</a> is a Firefox plugin that
+allows you to record interactions with a site and play them back for
+verification.</p>
+<p>Also see <a class="reference external" href="http://rethrick.com/#unit-tests-false-idol">criticism</a>. The lesson is that
+tests need to be smart, not mechanical.</p>
+</li>
+<li><p class="first"><a class="reference external" href="http://www.joelonsoftware.com/articles/fog0000000029.html">Bug tracking</a>, or
+defect lists. For a small project and a small number of
+collaborators, there is no need to use a full blown bug
+tracker. However, you should keep a spreadsheet or shared document
+at a minimum that lists all of the known defects. Ideally, <a class="reference external" href="http://www.joelonsoftware.com/articles/fog0000000043.html">bugs
+should be fixed before writing new code</a>, but
+of course this is <em>hard</em> in the real world.</p>
+<p><a class="reference external" href="http://bitbucket.org">Bitbucket</a> is a site that hosts Mercurial
+repositories with a bug tracker and wiki attached for free. It is an
+excellent resource if you are looking to collaborate on the cheap,
+or on the free. <a class="reference external" href="http://github.com">GitHub</a> is the equivalent in
+the Git world.</p>
+</li>
+<li><p class="first"><a class="reference external" href="http://en.wikipedia.org/wiki/Agile_software_development">Agile development and continuous fill-in-the-blank</a>. Agile
+is a buzzword that&#8217;s nearly crossed into the realm of
+meaninglessness. The core of the idea is that software defects (bugs
+<em>and</em> misfeatures) introduced early in development become
+increasingly expensive to fix as time passes. Thus, you need a
+development process that receives constant feedback <em>that can be
+used to modify future development cycles</em>. If the specifications are
+rigid and will never change, running through the Agile motions will
+not result in a more efficient operation.</p>
+<p>A principle of agile development is that you decrease the barriers
+to everything that you view as good. If user feedback on new
+features is good, then you decrease the barrier to pushing new
+features. In the web world, this is possible since everybody runs a
+single version of your software, controlled on your servers. In the
+iPhone world, you can not continuously deploy, and so the
+development process needs to reflect that.</p>
+<p>The root of agile development, found in the <a class="reference external" href="http://en.wikipedia.org/wiki/Toyota_Production_System">Toyota Production
+System</a>, is
+fascinating. Toyota turned the assembly line methods developed by
+Ford on its head by integrating in constant feedback and quick
+recovery, and as a result transformed the car industry.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="design-pattern-emporium">
+<h1>Design Pattern Emporium<a class="headerlink" href="#design-pattern-emporium" title="Permalink to this headline">¶</a></h1>
+<p>Design patterns can be thought of as tactics to solve various coding
+problems. They codify various ways to construct software so that it is
+easier to maintain and share code.</p>
+<p>There are many design pattern references, however I have collected
+together the ones I believe are the most useful.</p>
+<ul class="simple">
+<li><a class="reference external" href="http://en.wikipedia.org/wiki/Observer_pattern">Observer</a>. Notice
+that when you added that mention and hashtag features, you had to
+modify the <tt class="docutils literal"><span class="pre">create_flip</span></tt> function. There may, in fact, be many
+similar features, all of which require some action to be taken when
+a user flips. You could structure this using an Observer pattern:
+when <tt class="docutils literal"><span class="pre">create_flip</span></tt> is called, it emits a signal which other
+components of the system can hook to. This decouples the components
+(<tt class="docutils literal"><span class="pre">create_flip</span></tt> need not know what features depend on it), thereby
+making the interactions easier to extend and maintain.</li>
+<li><a class="reference external" href="http://en.wikipedia.org/wiki/Model_View_Presenter">MVP</a> or <a class="reference external" href="http://en.wikipedia.org/wiki/Model-view-controller">MVC</a>. Note MVP
+matches the structure of Flipper: view matches templates and apps,
+presenter matches the API, and model matches the data in the
+database. <a class="reference external" href="http://amix.dk/blog/post/19615#Model-View-Controller-History-theory-and-usage">Amix&#8217;s take</a>.</li>
+<li><a class="reference external" href="http://www.eaipatterns.com/ramblings/18_starbucks.html">Producer / Consumer or Conversation</a>. Handy
+when you want to separate out expensive computations from immediate
+feedback to the user. For example, a user does not immediately
+expect a flip to be searchable, or to reach another mentioned user
+the instant that it posts. The user might be ok with a delay of a
+few seconds to minutes, or even hours, so there is no need to insert
+the potentially expensive indexing operation into the flip
+save. Instead, we can queue the index operation for a later worker
+to consume.</li>
+<li><a class="reference external" href="http://en.wikipedia.org/wiki/Null_Object_pattern">Null Object</a>.
+The idea behind Null Object is to make interfaces more uniform.
+Let&#8217;s say you have a function <tt class="docutils literal"><span class="pre">get_logged_in_user()</span></tt> which is
+supposed to return an object of class <tt class="docutils literal"><span class="pre">User</span></tt>.  What do you do if
+there&#8217;s no logged in user?  One solution is to return something like
+<tt class="xref docutils literal"><span class="pre">None</span></tt> (if you&#8217;re working in Python). The problem there is that
+now you have something that&#8217;s not a real object and you have to add
+all sorts of special tests to avoid trying to access its attributes
+and throwing an exception. Instead, you could return a Null Object
+&#8211; one which has all the methods and attributes of <tt class="docutils literal"><span class="pre">User</span></tt>, but
+does nothing (gracefully). This usually ends up simplifying code.</li>
+</ul>
+</div>
+<div class="section" id="reading">
+<h1>Reading<a class="headerlink" href="#reading" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="programming-technology">
+<h2>Programming &amp; Technology<a class="headerlink" href="#programming-technology" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><a class="reference external" href="http://codekata.pragprog.com/">Code Kata</a>, Dave Thomas</li>
+<li><a class="reference external" href="http://jacobian.org/writing/rest-worst-practices/">REST Worst Practices</a>, Jacob
+Kaplan-Moss</li>
+<li><a class="reference external" href="http://blogs.msdn.com/b/oldnewthing/archive/2005/01/14/352949.aspx">Cleaner, more elegant, and harder to recognize</a>,
+Raymond Chen</li>
+<li><a class="reference external" href="http://www.joelonsoftware.com/articles/fog0000000043.html">The Joel Test: 12 Steps to Better Code</a>, Joel
+Spolsky</li>
+<li><a class="reference external" href="http://www.paulgraham.com/hundred.html">The Hundred Year Language</a>, Paul Graham</li>
+<li><a class="reference external" href="http://groups.google.com/group/mongodb-user/browse_thread/thread/528a94f287e9d77e">Foursquare Outage Post Mortem</a></li>
+</ul>
+</div>
+<div class="section" id="productivity-business">
+<h2>Productivity &amp; Business<a class="headerlink" href="#productivity-business" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><a class="reference external" href="http://www.paulgraham.com/makersschedule.html">Maker&#8217;s Scedule, Manager&#8217;s Schedule</a>, <a class="reference external" href="http://www.paulgraham.com/start.html">How To Start A
+Startup</a>, <a class="reference external" href="http://www.paulgraham.com/wealth.html">How To Make
+Wealth</a>, Paul Graham</li>
+<li><a class="reference external" href="http://www.folklore.org/StoryView.py?story=Real_Artists_Ship.txt">Real Artists Ship</a>,
+Andy Hertzfeld</li>
+<li><a class="reference external" href="http://www.joelonsoftware.com/articles/StrategyLetterV.html">Strategy Letter V (aka, commoditize your complements)</a>,
+Joel Spolsky</li>
+<li><a class="reference external" href="http://www.fastcodesign.com/1663488/wanna-solve-impossible-problems-find-ways-to-fail-quicker">Fail Quicker</a>,
+Aza Raskin.</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Flipper, a Federated Twitter Clone</a><ul>
+<li><a class="reference internal" href="#wsgi">WSGI</a></li>
+<li><a class="reference internal" href="#structure-of-the-url-and-routing">Structure of the URL and routing</a></li>
+<li><a class="reference internal" href="#templating">Templating</a></li>
+<li><a class="reference internal" href="#html">HTML</a></li>
+<li><a class="reference internal" href="#sql">SQL</a></li>
+<li><a class="reference internal" href="#the-flipper-model">The Flipper Model</a></li>
+<li><a class="reference internal" href="#api-routes-web-site">API + Routes = Web Site</a></li>
+<li><a class="reference internal" href="#representational-state-transfer">Representational State Transfer</a></li>
+<li><a class="reference internal" href="#the-form-loop">The Form Loop</a></li>
+<li><a class="reference internal" href="#validation">Validation</a></li>
+<li><a class="reference internal" href="#cookies">Cookies</a></li>
+<li><a class="reference internal" href="#following">Following</a></li>
+<li><a class="reference internal" href="#denormalization">Denormalization</a></li>
+<li><a class="reference internal" href="#caching">Caching</a></li>
+<li><a class="reference internal" href="#federation">Federation</a></li>
+<li><a class="reference internal" href="#background-processing">Background Processing</a></li>
+<li><a class="reference internal" href="#javascript-and-ajax">Javascript and AJAX</a></li>
+<li><a class="reference internal" href="#production-time">Production Time</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#software-engineering-good-habits">Software Engineering Good Habits</a></li>
+<li><a class="reference internal" href="#design-pattern-emporium">Design Pattern Emporium</a></li>
+<li><a class="reference internal" href="#reading">Reading</a><ul>
+<li><a class="reference internal" href="#programming-technology">Programming &amp; Technology</a></li>
+<li><a class="reference internal" href="#productivity-business">Productivity &amp; Business</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="index.html"
+                        title="previous chapter">Elements of Web Architecture</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/flipper.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" size="18" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="index.html" title="Elements of Web Architecture"
+             >previous</a> |</li>
+        <li><a href="index.html">Elements of Web Architecture v0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Wes Chow.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.0.7.
+    </div>
+  </body>
+</html>
